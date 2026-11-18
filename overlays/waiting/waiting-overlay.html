@@ -9,8 +9,8 @@
   Vector graphics: stays sharp at any source size. Seamless 8 s loop.
 
   Optional URL parameters:
-    ?theme=white   white badge with blue artwork (default: blue badge, white artwork)
-    ?bare=1        no badge behind the artwork, for placing on your own background
+    ?theme=white   white badge with blue ticks (default: blue badge, white ticks)
+    ?bare=1        no badge behind the ticks, for placing on your own background
   The waiting-overlay-*.html files next to this one open it with those parameters set.
 -->
 <style>
@@ -20,16 +20,12 @@
     --blue-dark: #01477f;
     --navy: #082238;
     --mist: #e8f2fb;
-    --line: #dde5ee;
 
     /* theme: blue badge (default) */
     --rim: var(--navy);
     --face-a: var(--blue);
     --face-b: var(--blue-dark);
     --fg: #ffffff;
-    --sand-a: #ffffff;
-    --sand-b: var(--line);
-    --glass-tint: 0.10;
     --tick-idle: 0.2;
   }
   :root[data-theme="white"] {
@@ -37,20 +33,12 @@
     --face-a: #ffffff;
     --face-b: #f6f8fb;
     --fg: var(--blue);
-    --sand-a: var(--blue);
-    --sand-b: var(--blue-dark);
-    --glass-tint: 0.07;
     --tick-idle: 0.22;
   }
   html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
   svg { display: block; width: 100vw; height: 100vh; }
   .rim { fill: var(--rim); }
   .tick { stroke: var(--fg); stroke-width: 7; stroke-linecap: round; }
-  .glass-tint { fill: var(--fg); fill-opacity: var(--glass-tint); }
-  .glass { fill: none; stroke: var(--fg); stroke-width: 7; stroke-linejoin: round; }
-  .cap { fill: var(--fg); }
-  .sand { fill: url(#sandFill); stroke: url(#sandFill); stroke-width: 3; stroke-linejoin: round; }
-  .stream { fill: none; stroke: var(--sand-a); stroke-width: 4.5; stroke-linecap: round; }
   :root[data-bare] .badge { display: none; }
 </style>
 </head>
@@ -61,10 +49,6 @@
       <stop offset="0" style="stop-color: var(--face-a)"/>
       <stop offset="1" style="stop-color: var(--face-b)"/>
     </radialGradient>
-    <linearGradient id="sandFill" gradientUnits="userSpaceOnUse" x1="0" y1="-170" x2="0" y2="170">
-      <stop offset="0" style="stop-color: var(--sand-a)"/>
-      <stop offset="1" style="stop-color: var(--sand-b)"/>
-    </linearGradient>
     <filter id="lift" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">
       <feDropShadow dx="0" dy="10" stdDeviation="13" flood-color="#082238" flood-opacity="0.38"/>
     </filter>
@@ -76,19 +60,6 @@
   </g>
 
   <g id="ticks"></g>
-
-  <g transform="translate(500 500) scale(1.36)">
-    <g class="turn"><path class="glass-tint" id="glassTint"/></g>
-    <path class="sand" id="sandTop"/>
-    <path class="sand" id="sandBottom"/>
-    <path class="stream" id="streamSoft" opacity="0.55"/>
-    <path class="stream" id="streamGrains" stroke-dasharray="5 11"/>
-    <g class="turn">
-      <path class="glass" id="glass"/>
-      <rect class="cap" x="-122" y="-196" width="244" height="28" rx="14"/>
-      <rect class="cap" x="-122" y="168" width="244" height="28" rx="14"/>
-    </g>
-  </g>
 </svg>
 
 <script>
@@ -101,219 +72,34 @@
 
   /* ---------- timeline (seconds) ---------- */
   const LOOP = 8;          // one full cycle
-  const DRAIN = 5.9;       // upper chamber runs empty
-  const FALL = 0.3;        // a grain's trip from the neck to the floor
-  const FLIP_START = 6.4;  // hourglass turns over
-  const FLIP_END = 7.85;
-
-  /* ---------- hourglass geometry (local units, y points down) ---------- */
-  const H = 172;           // half height of the glass
-  const W_CAP = 100;       // half width at the ends
-  const W_NECK = 15;       // half width at the neck
-  const CORNER = 16;       // corner radius at the ends
-  const CTRL_1 = 80, CTRL_2 = 62;  // bezier handles of the bulb profile
-  const INSET = 10;        // gap between the glass line and the sand
-  const SAND_LEVEL = -118; // surface of the sand when the upper chamber is full
-  const REPOSE = 0.7;      // slope of the heap in the lower chamber
-  const GRAIN_SPEED = 150; // multiple of the dash period / LOOP, slow enough for 30 fps
+  const FILL = 6.2;        // the ring is fully lit
+  const WIPE_START = 6.4;  // the ring clears again
+  const WIPE_END = 7.85;
 
   const clamp01 = (v) => Math.min(1, Math.max(0, v));
   const smooth = (v) => { v = clamp01(v); return v * v * (3 - 2 * v); };
   const easeInOut = (v) => (v < 0.5 ? 4 * v * v * v : 1 - Math.pow(-2 * v + 2, 3) / 2);
-  const backInOut = (v) => {
-    const k = 0.8 * 1.525;
-    return v < 0.5
-      ? (Math.pow(2 * v, 2) * ((k + 1) * 2 * v - k)) / 2
-      : (Math.pow(2 * v - 2, 2) * ((k + 1) * (2 * v - 2) + k) + 2) / 2;
-  };
-
-  /* Keep the part of a polygon where a*x + b*y + c >= 0. */
-  function clip(poly, a, b, c) {
-    const out = [];
-    for (let i = 0, n = poly.length; i < n; i++) {
-      const p = poly[i], q = poly[(i + 1) % n];
-      const dp = a * p[0] + b * p[1] + c;
-      const dq = a * q[0] + b * q[1] + c;
-      if (dp >= 0) out.push(p);
-      if ((dp >= 0) !== (dq >= 0)) {
-        const k = dp / (dp - dq);
-        out.push([p[0] + k * (q[0] - p[0]), p[1] + k * (q[1] - p[1])]);
-      }
-    }
-    return out;
-  }
-  function area(poly) {
-    let sum = 0;
-    for (let i = 0, n = poly.length; i < n; i++) {
-      const p = poly[i], q = poly[(i + 1) % n];
-      sum += p[0] * q[1] - q[0] * p[1];
-    }
-    return Math.abs(sum) / 2;
-  }
-  /* Everything below a surface at height `level`; `slope` > 0 heaps it up around x = 0. */
-  function below(poly, level, slope) {
-    if (slope < 1e-4) return clip(poly, 0, 1, -level);
-    return clip(clip(poly, -slope, 1, -level), slope, 1, -level);
-  }
-  /* Settle a given amount of sand into a chamber: find the surface height that holds it. */
-  function settle(poly, amount, slope) {
-    if (amount < 0.5) return { poly: [], level: null };
-    let lo = -420, hi = 420;
-    for (let i = 0; i < 24; i++) {
-      const mid = (lo + hi) / 2;
-      if (area(below(poly, mid, slope)) > amount) lo = mid; else hi = mid;
-    }
-    const level = (lo + hi) / 2;
-    return { poly: below(poly, level, slope), level };
-  }
-  function rotate(poly, angle) {
-    const c = Math.cos(angle), s = Math.sin(angle);
-    return poly.map(([x, y]) => [x * c - y * s, x * s + y * c]);
-  }
-  function toPath(poly) {
-    if (poly.length < 3) return '';
-    let d = '';
-    for (let i = 0; i < poly.length; i++) {
-      d += (i ? 'L' : 'M') + poly[i][0].toFixed(2) + ' ' + poly[i][1].toFixed(2);
-    }
-    return d + 'Z';
-  }
-
-  /* ---------- build the glass once ---------- */
-  function bezier(p0, p1, p2, p3, steps, out) {
-    for (let i = 1; i <= steps; i++) {
-      const t = i / steps, u = 1 - t;
-      out.push([
-        u * u * u * p0[0] + 3 * u * u * t * p1[0] + 3 * u * t * t * p2[0] + t * t * t * p3[0],
-        u * u * u * p0[1] + 3 * u * u * t * p1[1] + 3 * u * t * t * p2[1] + t * t * t * p3[1],
-      ]);
-    }
-  }
-  function arc(cx, cy, r, from, to, steps, out) {
-    for (let i = 1; i <= steps; i++) {
-      const a = from + ((to - from) * i) / steps;
-      out.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]);
-    }
-  }
-  function line(from, to, steps, out) {
-    for (let i = 1; i <= steps; i++) {
-      const t = i / steps;
-      out.push([from[0] + (to[0] - from[0]) * t, from[1] + (to[1] - from[1]) * t]);
-    }
-  }
-
-  // Right-hand side from the top centre down to the bottom centre, then mirrored.
-  const right = [[0, -H]];
-  line([0, -H], [W_CAP - CORNER, -H], 12, right);
-  arc(W_CAP - CORNER, -H + CORNER, CORNER, -Math.PI / 2, 0, 12, right);
-  bezier([W_CAP, -H + CORNER], [W_CAP, -CTRL_1], [W_NECK, -CTRL_2], [W_NECK, 0], 90, right);
-  bezier([W_NECK, 0], [W_NECK, CTRL_2], [W_CAP, CTRL_1], [W_CAP, H - CORNER], 90, right);
-  arc(W_CAP - CORNER, H - CORNER, CORNER, 0, Math.PI / 2, 12, right);
-  line([W_CAP - CORNER, H], [0, H], 12, right);
-  const outline = right.concat(right.slice(1, -1).reverse().map(([x, y]) => [-x, y]));
-
-  // The sand lives inside the glass line, kept clear of it by INSET.
-  const inner = outline.map((p, i) => {
-    const n = outline.length;
-    const a = outline[(i + n - 1) % n], b = outline[(i + 1) % n];
-    const tx = b[0] - a[0], ty = b[1] - a[1];
-    const len = Math.hypot(tx, ty) || 1;
-    return [p[0] - (ty / len) * INSET, p[1] + (tx / len) * INSET];
-  });
-  const upper = clip(inner, 0, -1, 0);  // y <= 0
-  const lower = clip(inner, 0, 1, 0);   // y >= 0
-  const SAND = area(below(upper, SAND_LEVEL, 0));
-  const FLOOR = H - INSET;
-
-  const glassPath =
-    `M${-(W_CAP - CORNER)} ${-H}H${W_CAP - CORNER}` +
-    `A${CORNER} ${CORNER} 0 0 1 ${W_CAP} ${-(H - CORNER)}` +
-    `C${W_CAP} ${-CTRL_1} ${W_NECK} ${-CTRL_2} ${W_NECK} 0` +
-    `C${W_NECK} ${CTRL_2} ${W_CAP} ${CTRL_1} ${W_CAP} ${H - CORNER}` +
-    `A${CORNER} ${CORNER} 0 0 1 ${W_CAP - CORNER} ${H}H${-(W_CAP - CORNER)}` +
-    `A${CORNER} ${CORNER} 0 0 1 ${-W_CAP} ${H - CORNER}` +
-    `C${-W_CAP} ${CTRL_1} ${-W_NECK} ${CTRL_2} ${-W_NECK} 0` +
-    `C${-W_NECK} ${-CTRL_2} ${-W_CAP} ${-CTRL_1} ${-W_CAP} ${-(H - CORNER)}` +
-    `A${CORNER} ${CORNER} 0 0 1 ${-(W_CAP - CORNER)} ${-H}Z`;
-
-  const $ = (id) => document.getElementById(id);
-  $('glass').setAttribute('d', glassPath);
-  $('glassTint').setAttribute('d', glassPath);
-  const sandTop = $('sandTop'), sandBottom = $('sandBottom');
-  const streamSoft = $('streamSoft'), streamGrains = $('streamGrains');
-  const turning = document.querySelectorAll('.turn');
 
   /* ---------- tick ring ---------- */
   const TICKS = 60;
   const ticks = [];
+  const ring = document.getElementById('ticks');
   for (let i = 0; i < TICKS; i++) {
     const el = document.createElementNS('http://www.w3.org/2000/svg', 'line');
     el.setAttribute('class', 'tick');
-    $('ticks').appendChild(el);
+    ring.appendChild(el);
     const a = (i / TICKS) * Math.PI * 2 - Math.PI / 2;
     ticks.push({ el, cos: Math.cos(a), sin: Math.sin(a) });
   }
   const tickIdle = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tick-idle')) || 0.2;
 
-  /* Funnel-shaped dip where the sand is being drawn into the neck. */
-  function dimple(poly, level, depth, halfWidth) {
-    const hits = [];
-    for (let i = 0; i < poly.length; i++) if (Math.abs(poly[i][1] - level) < 1e-6) hits.push(i);
-    if (hits.length !== 2 || depth < 0.3) return poly;
-    let [i0, i1] = hits;
-    if (i1 !== i0 + 1) { if (i0 === 0 && i1 === poly.length - 1) { i0 = i1; } else return poly; }
-    const from = poly[i0], dir = poly[(i0 + 1) % poly.length][0] > from[0] ? 1 : -1;
-    const extra = [];
-    for (let k = 0; k <= 16; k++) {
-      const x = -halfWidth + (2 * halfWidth * k) / 16;
-      extra.push([dir * x, level + depth * (0.5 + 0.5 * Math.cos((Math.PI * x) / halfWidth))]);
-    }
-    return poly.slice(0, i0 + 1).concat(extra, poly.slice(i0 + 1));
-  }
-
   /* ---------- one frame ---------- */
   function render(seconds) {
     const t = ((seconds % LOOP) + LOOP) % LOOP;
 
-    // Hourglass turn-over.
-    const flip = clamp01((t - FLIP_START) / (FLIP_END - FLIP_START));
-    const angle = Math.PI * backInOut(flip);
-    const deg = (angle * 180) / Math.PI;
-    for (const g of turning) g.setAttribute('transform', `rotate(${deg.toFixed(3)})`);
-
-    // Upper chamber: level sinks at a steady rate, with a dip above the neck.
-    const upperAmount = SAND * (1 - clamp01(t / DRAIN));
-    const top = settle(upper, upperAmount, 0);
-    let topPoly = top.poly;
-    if (top.level !== null) {
-      let halfWidth = 0;
-      for (const p of topPoly) if (Math.abs(p[1] - top.level) < 1e-6) halfWidth = Math.max(halfWidth, Math.abs(p[0]));
-      const w = Math.min(30, halfWidth * 0.6);
-      const depth = Math.min(w * 0.62 * smooth(t / 0.5), -top.level * 0.8);
-      topPoly = dimple(topPoly, top.level, depth, w);
-    }
-    sandTop.setAttribute('d', toPath(topPoly));
-
-    // Lower chamber: heap grows; during the turn it stays level with the ground
-    // while the glass rotates around it.
-    const lowerAmount = SAND * clamp01((t - FALL) / DRAIN);
-    const slope = REPOSE * (1 - smooth(flip / 0.3));
-    const bottom = settle(flip > 0 ? rotate(lower, angle) : lower, lowerAmount, slope);
-    sandBottom.setAttribute('d', toPath(bottom.poly));
-
-    // Falling stream between neck and heap.
-    const landing = bottom.level === null ? FLOOR : bottom.level + 2;
-    const head = t < FALL ? 2 + (FLOOR - 2) * Math.pow(t / FALL, 2) : landing;
-    const tail = t < DRAIN ? 2 : 2 + (landing - 2) * Math.pow(clamp01((t - DRAIN) / FALL), 2);
-    const flowing = t < DRAIN + FALL && head - tail > 0.5;
-    const d = flowing ? `M0 ${tail.toFixed(2)}V${head.toFixed(2)}` : '';
-    streamSoft.setAttribute('d', d);
-    streamGrains.setAttribute('d', d);
-    streamGrains.setAttribute('stroke-dashoffset', (tail - GRAIN_SPEED * t).toFixed(2));
-
-    // Tick ring: fills as the sand runs, wipes clear while the glass turns.
-    const filled = clamp01(t / (DRAIN + FALL)) * (TICKS + 0.5);
-    const wiped = easeInOut(flip) * (TICKS + 8);
+    // Ticks light up clockwise from 12 o'clock, then a wipe clears them the same way round.
+    const filled = clamp01(t / FILL) * (TICKS + 0.5);
+    const wiped = easeInOut(clamp01((t - WIPE_START) / (WIPE_END - WIPE_START))) * (TICKS + 8);
     for (let i = 0; i < TICKS; i++) {
       const lit = smooth((filled - i) / 1.2) * (1 - smooth((wiped - i) / 8));
       const { el, cos, sin } = ticks[i];

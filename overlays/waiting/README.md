@@ -1,8 +1,9 @@
 # Waiting overlay
 
-Animated hourglass inside a clock-style tick ring, for the OBS scene shown while
-participants wait to enter the course. Transparent background, seamless 8-second loop,
-CSK colours (`#0159a9`, `#01477f`, `#082238`, white).
+Round badge with a clock-style ring of 60 ticks that lights up clockwise and then
+clears again, for the OBS scene shown while participants wait to enter the course.
+Transparent background, seamless 8-second loop, CSK colours (`#0159a9`, `#01477f`,
+`#082238`, white).
 
 ![Preview](preview.png)
 
@@ -15,10 +16,10 @@ sharp at any size. Keep all the HTML files in the same folder.
 
 | File | Look |
 | --- | --- |
-| `waiting-overlay.html` | Blue badge, white artwork |
-| `waiting-overlay-white.html` | White badge, blue artwork |
-| `waiting-overlay-bare-white.html` | White artwork only, for dark backgrounds |
-| `waiting-overlay-bare-blue.html` | Blue artwork only, for light backgrounds |
+| `waiting-overlay.html` | Blue badge, white ticks |
+| `waiting-overlay-white.html` | White badge, blue ticks |
+| `waiting-overlay-bare-white.html` | White ticks only, for dark backgrounds |
+| `waiting-overlay-bare-blue.html` | Blue ticks only, for light backgrounds |
 
 **Media source (video file).** Add a *Media Source*, choose one of the WebM files and
 tick *Loop*. The files are VP9 with an alpha channel at 60 fps.
@@ -32,7 +33,7 @@ tick *Loop*. The files are VP9 with an alpha channel at 60 fps.
 
 ## Change it
 
-Timing, proportions and colours are constants at the top of the script and style blocks
+Timing and colours are constants at the top of the script and style blocks
 in `waiting-overlay.html`. To rebuild the video files after a change:
 
 ```bash
